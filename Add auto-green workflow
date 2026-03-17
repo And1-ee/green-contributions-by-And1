@@ -1,0 +1,65 @@
+name: Fill History (Daily Auto + Manual Batch)
+
+on:
+  schedule:
+    - cron: '0 20 * * *'
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: '开始日期 (YYYY-MM-DD)'
+        required: true
+        default: '2025-04-03'
+      end_date:
+        description: '结束日期 (YYYY-MM-DD)，留空=今天'
+        required: false
+      daily_commits:
+        description: '每天提交次数'
+        required: true
+        default: '12'
+
+jobs:
+  fill:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config --global user.email "206095640@users.noreply.github.com"
+          git config --global user.name "And1-ee"
+
+      - name: Generate commits
+        env:
+          START_DATE: ${{ github.event.inputs.start_date }}
+          END_DATE: ${{ github.event.inputs.end_date }}
+          DAILY_COMMITS: ${{ github.event.inputs.daily_commits }}
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            TODAY=$(date +%Y-%m-%d)
+            for i in $(seq 1 12); do
+              git commit --allow-empty -m "daily commit $i"
+            done
+          else
+            END=${END_DATE:-$(date +%Y-%m-%d)}
+            CURRENT=$START_DATE
+            while [ "$CURRENT" != "$END" ]; do
+              for i in $(seq 1 $DAILY_COMMITS); do
+                export GIT_AUTHOR_DATE="$CURRENT 12:00:00"
+                export GIT_COMMITTER_DATE="$CURRENT 12:00:00"
+                git commit --allow-empty -m "history $i"
+              done
+              CURRENT=$(date -d "$CURRENT +1 day" +%Y-%m-%d)
+            done
+          fi
+
+      - name: Push
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            git push origin HEAD
+          else
+            git push --force origin HEAD
+          fi
